@@ -1,26 +1,32 @@
 // 莉娅工作区插件 —— Host 半（ESM，函数形式）
 // 功能：注册 webServer 路由 /liya-workspace/summary，返回工作区档案统计 JSON，
 // 供 Client 半的设置页 fetch 展示（host↔client 数据链路）。
+// 工作区根目录可配置，不再硬编码本机路径，解析优先级：
+//   设置页「莉娅工作区」的 workspaceRoot（即时生效）> cordis.yml config.workspaceRoot > DSH host 进程当前工作目录。
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-
-// TODO: 部署变化的参数应走 Config 字段（cordis.yml 可改），入门版先硬编码。
-const WORKSPACE_ROOT = 'E:/DCIM/DSH-Liya'
+import Schema from '@deepseek-ai/schemastery'
 
 export const name = 'liya-workspace'
-export const inject = ['webServer']
+export const inject = ['webServer', 'settings']
 
-function dirCount(rel) {
+const wsSchema = Schema.object({
+  workspaceRoot: Schema.string()
+    .default('')
+    .description('工作区根目录绝对路径；留空则使用 DSH host 进程的当前工作目录'),
+})
+
+function dirCount(root, rel) {
   try {
-    return readdirSync(join(WORKSPACE_ROOT, rel)).filter((n) => !n.startsWith('.')).length
+    return readdirSync(join(root, rel)).filter((n) => !n.startsWith('.')).length
   } catch {
     return 0
   }
 }
 
-function collectSummary() {
+function collectSummary(root) {
   const out = {
-    root: WORKSPACE_ROOT,
+    root,
     map: '',
     memoryCount: 0,
     recordsCount: 0,
@@ -28,7 +34,7 @@ function collectSummary() {
     recentDiary: [],
   }
   try {
-    const map = readFileSync(join(WORKSPACE_ROOT, 'workspace/FILE-MAP.md'), 'utf8')
+    const map = readFileSync(join(root, 'workspace/FILE-MAP.md'), 'utf8')
     out.map = map
       .split('\n')
       .filter((l) => l.includes('|') || l.includes('## '))
@@ -38,10 +44,10 @@ function collectSummary() {
   } catch (err) {
     out.map = `FILE-MAP 读取失败: ${err.message}`
   }
-  out.memoryCount = dirCount('workspace/memory')
-  out.recordsCount = dirCount('workspace/records')
+  out.memoryCount = dirCount(root, 'workspace/memory')
+  out.recordsCount = dirCount(root, 'workspace/records')
   try {
-    const names = readdirSync(join(WORKSPACE_ROOT, 'diary'))
+    const names = readdirSync(join(root, 'diary'))
       .filter((n) => n.startsWith('daily-'))
       .sort()
       .reverse()
@@ -54,15 +60,35 @@ function collectSummary() {
   return out
 }
 
-export function apply(ctx) {
-  console.log('[liya-workspace] plugin loaded (host half)')
+export function apply(ctx, config) {
+  const bootRoot = (config && typeof config.workspaceRoot === 'string' && config.workspaceRoot.trim()) || ''
+  console.log('[liya-workspace] plugin loaded (host half), boot workspaceRoot=' + (bootRoot || process.cwd()))
+
+  // 配置 namespace：用户可在 WebUI 设置页填写 workspaceRoot，保存即时生效
+  try {
+    ctx.settings.register('liya-workspace', wsSchema, { applies: 'live' })
+    console.log('[liya-workspace] settings namespace registered: liya-workspace')
+  } catch (e) {
+    console.error('[liya-workspace] settings.register failed:', e)
+  }
+
+  // 解析当前生效的工作区根目录（每次请求实时读取，settings 改了立即生效）
+  function currentRoot() {
+    try {
+      const section = ctx.settings.get('liya-workspace')
+      if (section && typeof section.workspaceRoot === 'string' && section.workspaceRoot.trim() !== '') {
+        return section.workspaceRoot.trim()
+      }
+    } catch { /* settings 服务不可用时静默回退 */ }
+    return bootRoot || process.cwd()
+  }
 
   ctx.webServer.register({
     kind: 'prefix',
     path: '/liya-workspace',
     handler: async (_req, res) => {
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
-      res.end(JSON.stringify(collectSummary()))
+      res.end(JSON.stringify(collectSummary(currentRoot())))
     },
   })
   console.log('[liya-workspace] route /liya-workspace/summary registered')
