@@ -77,6 +77,14 @@ window.__ModuleLoader__.load({
     //   apply 期 bind 一次复用 controller；subscribe/getSnapshot 必须包函数绑定 this（React 裸调会丢 this）。
     function WorkspaceRootEditor(props) {
       var bound = props.bound;
+      var ctx = props.ctx;
+      // 兜底：apply 期 settingsScope 可能尚未就绪，渲染期再试一次（dsh-liya-ui 同款姿势）
+      if (bound === null) {
+        try {
+          var ss0 = ctx.get('settingsScope');
+          if (ss0 !== undefined) bound = ss0.bind({ namespace: 'dsh-liya-workspace' });
+        } catch (e) { bound = null; }
+      }
       var stagedState = react.useState(null); // null=未编辑，''=清空
       var staged = stagedState[0];
       var setStaged = stagedState[1];
@@ -163,6 +171,7 @@ window.__ModuleLoader__.load({
 
     function LiyaSection(props) {
       var bound = props.bound;
+      var ctx = props.ctx;
       var state = react.useState('loading'); // loading | ok | error
       var phase = state[0];
       var setPhase = state[1];
@@ -225,7 +234,7 @@ window.__ModuleLoader__.load({
           { style: { margin: '0 0 12px', fontSize: 14, lineHeight: '22px', color: 'var(--dsw-alias-label-secondary)' } },
           '工作区档案速览：数据由插件 host 半实时读取（webServer 路由 /dsh-liya-workspace/summary），client 半 fetch 展示。'
         ),
-        react.createElement(WorkspaceRootEditor, { bound: bound }),
+        react.createElement(WorkspaceRootEditor, { bound: bound, ctx: ctx }),
         body
       );
     }
@@ -248,7 +257,7 @@ window.__ModuleLoader__.load({
             order: 100,
             label: function () { return '莉娅工作区'; }
           },
-          function (props) { return react.createElement(LiyaSection, { bound: bound }); }
+          function (props) { return react.createElement(LiyaSection, { bound: bound, ctx: ctx }); }
         );
       });
     };
