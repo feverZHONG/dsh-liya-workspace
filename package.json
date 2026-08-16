@@ -1,7 +1,7 @@
 {
-  "name": "liya-workspace-plugin",
+  "name": "dsh-liya-workspace-plugin",
   "version": "0.1.0",
-  "description": "莉娅工作区设置页插件：在 WebUI 设置里新增「莉娅工作区」子设置页。",
+  "description": "工作区档案速览设置页插件：在 WebUI 设置里新增「莉娅工作区」子设置页，展示 FILE-MAP 摘要、memory/records/diary 统计、最近日记。工作区根目录可配置（设置页填写，即时生效）。",
   "type": "module",
   "main": "index.js",
   "exports": {

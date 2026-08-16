@@ -3,7 +3,7 @@
 # workspaceRoot 留空：优先在 WebUI 设置页「莉娅工作区」里填写（即时生效），
 # 其次用本 config 兜底，最后回退到 DSH host 进程当前工作目录。
 - insert:
-    - id: liya-workspace
-      name: liya-workspace-plugin
+    - id: dsh-liya-workspace
+      name: dsh-liya-workspace-plugin
       config:
         workspaceRoot: ""

@@ -1,8 +1,8 @@
 // 莉娅工作区插件 —— Client 半（dsh client bundle）
 // 功能：设置里注册「莉娅工作区」子设置页；页面通过 fetch 调用 host 的
-// /liya-workspace/summary 路由展示工作区档案统计（host↔client 数据链路）。
+// /dsh-liya-workspace/summary 路由展示工作区档案统计（host↔client 数据链路）。
 window.__ModuleLoader__.load({
-  id: 'liya-workspace-plugin',
+  id: 'dsh-liya-workspace-plugin',
   factory: (require) => {
     var module = { exports: {} };
     var exports = module.exports;
@@ -84,7 +84,7 @@ window.__ModuleLoader__.load({
 
       react.useEffect(function () {
         var cancelled = false;
-        fetch('/liya-workspace/summary')
+        fetch('/dsh-liya-workspace/summary')
           .then(function (r) {
             if (!r.ok) throw new Error('HTTP ' + r.status);
             return r.json();
@@ -132,7 +132,7 @@ window.__ModuleLoader__.load({
         react.createElement(
           'p',
           { style: { margin: '0 0 12px', fontSize: 14, lineHeight: '22px', color: 'var(--dsw-alias-label-secondary)' } },
-          '工作区档案速览：数据由插件 host 半实时读取（webServer 路由 /liya-workspace/summary），client 半 fetch 展示。'
+          '工作区档案速览：数据由插件 host 半实时读取（webServer 路由 /dsh-liya-workspace/summary），client 半 fetch 展示。'
         ),
         body
       );
