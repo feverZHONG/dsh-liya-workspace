@@ -1,7 +1,9 @@
 // 莉娅工作区插件 —— Client 半（dsh client bundle）
-// 功能：设置里注册「莉娅工作区」子设置页；页面通过 fetch 调用 host 的
-// /dsh-liya-workspace/summary 路由展示工作区档案统计（host↔client 数据链路）；
-// 顶部提供 workspaceRoot 配置编辑（settingsScope 持久化，保存即时生效）。
+// 功能：
+//   1. settings.section「莉娅工作区」页：fetch /dsh-liya-workspace/summary 展示档案速览 + workspaceRoot 编辑区
+//   2. settings.plugin.item「dsh-liya-workspace」卡：workspaceRoot 配置编辑（原生插件卡风格，走 settingsScope）
+// settingsScope 姿势照抄 dsh-liya-ui / dsh-liya-skin（已验证可用）：
+//   apply 期 bind 一次复用；组件内 fallback 渲染期再 bind；subscribe/getSnapshot 包函数绑定 this。
 window.__ModuleLoader__.load({
   id: 'dsh-liya-workspace-plugin',
   factory: (require) => {
@@ -72,19 +74,19 @@ window.__ModuleLoader__.load({
       );
     }
 
-    // ── 工作区根目录配置编辑（settingsScope）
-    // 姿势照抄 dsh-liya-ui（官方 ui-theme 同款）：
-    //   apply 期 bind 一次复用 controller；subscribe/getSnapshot 必须包函数绑定 this（React 裸调会丢 this）。
+    // ── settingsScope 绑定（apply 期一次 + 渲染期兜底，dsh-liya-ui/skin 同款）
+    function bindScope(ctx, bound) {
+      if (bound !== null && bound !== undefined) return bound;
+      try {
+        var ss = ctx.get('settingsScope');
+        if (ss !== undefined) return ss.bind({ namespace: 'dsh-liya-workspace' });
+      } catch (e) { /* settings 服务缺失时静默 */ }
+      return null;
+    }
+
+    // ── workspaceRoot 编辑区（卡 body 与 section 页共用）
     function WorkspaceRootEditor(props) {
       var bound = props.bound;
-      var ctx = props.ctx;
-      // 兜底：apply 期 settingsScope 可能尚未就绪，渲染期再试一次（dsh-liya-ui 同款姿势）
-      if (bound === null) {
-        try {
-          var ss0 = ctx.get('settingsScope');
-          if (ss0 !== undefined) bound = ss0.bind({ namespace: 'dsh-liya-workspace' });
-        } catch (e) { bound = null; }
-      }
       var stagedState = react.useState(null); // null=未编辑，''=清空
       var staged = stagedState[0];
       var setStaged = stagedState[1];
@@ -146,7 +148,7 @@ window.__ModuleLoader__.load({
         ),
         loading ? react.createElement('p', { style: { margin: '8px 0 0', fontSize: 12, color: 'var(--dsw-alias-label-tertiary)' } }, '配置加载中…')
         : !available ? react.createElement('p', { style: { margin: '8px 0 0', fontSize: 12, color: 'var(--dsw-alias-label-tertiary)', lineHeight: '18px' } },
-            'settingsScope 不可用，无法在此修改；可改 cordis.yml 的 config.workspaceRoot。')
+            '配置编辑暂不可用：请到 设置 → 插件 → 插件配置 → dsh-liya-workspace 卡修改，或改 cordis.yml 的 config.workspaceRoot。')
         : react.createElement(
             'div',
             { style: { marginTop: 8, display: 'flex', gap: 8, alignItems: 'center' } },
@@ -169,9 +171,106 @@ window.__ModuleLoader__.load({
       );
     }
 
-    function LiyaSection(props) {
-      var bound = props.bound;
+    // ── 设置 → 插件 → 插件配置 卡（原生风格，照 dsh-liya-ui LiyaUiCard）
+    var CARD_BTN = {
+      font: 'inherit', fontSize: 13, borderRadius: 8, padding: '5px 12px', cursor: 'pointer',
+      border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-1)',
+      color: 'var(--dsw-alias-label-primary)'
+    };
+
+    function LiyaWorkspaceCard(props) {
       var ctx = props.ctx;
+      var bound = bindScope(ctx, props.bound);
+      var openState = react.useState(false);
+      var open = openState[0];
+      var setOpen = openState[1];
+
+      var snap = null;
+      var dirty = false;
+      if (bound !== null) {
+        try {
+          snap = react.useSyncExternalStore(
+            function (listener) { return bound.subscribe(listener); },
+            function () { return bound.getSnapshot(); }
+          );
+        } catch (e) { snap = null; }
+      }
+      var available = bound !== null && snap !== null && snap.status === 'ready';
+      var loading = bound !== null && snap !== null && snap.status === 'loading';
+      var user = (snap && snap.user && typeof snap.user === 'object') ? snap.user : {};
+      var hasOverride = Object.prototype.hasOwnProperty.call(user, 'workspaceRoot');
+
+      var titleRow = react.createElement(
+        'button',
+        {
+          type: 'button',
+          'aria-expanded': open,
+          onClick: function () { setOpen(!open); },
+          style: {
+            display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
+            gap: 10, padding: '10px 12px', border: 0, background: 'transparent',
+            color: 'var(--dsw-alias-label-primary)', font: 'inherit', cursor: 'pointer', textAlign: 'left'
+          }
+        },
+        react.createElement(
+          'span',
+          { style: { display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 } },
+          react.createElement('strong', { style: { fontSize: 13, fontWeight: 600 } }, 'dsh-liya-workspace-plugin'),
+          react.createElement('span', { style: { fontSize: 12, color: 'var(--dsw-alias-label-secondary)' } }, '工作区档案速览，配置工作区根目录')
+        ),
+        react.createElement(
+          'span',
+          { style: { display: 'flex', alignItems: 'center', gap: 6, color: 'var(--dsw-alias-label-tertiary)', fontSize: 12, flex: 'none' } },
+          hasOverride ? react.createElement('span', { style: { fontSize: 12 } }, '已配置') : null,
+          react.createElement('span', { 'aria-hidden': 'true', style: { transition: 'transform .15s', transform: open ? 'rotate(180deg)' : 'none', fontSize: 10 } }, '▾')
+        )
+      );
+
+      var body = null;
+      if (open) {
+        var content;
+        if (loading) {
+          content = react.createElement('p', { key: 'loading', style: { margin: 0, fontSize: 13, color: 'var(--dsw-alias-label-tertiary)' } }, '配置加载中…');
+        } else if (!available) {
+          content = react.createElement(
+            'div',
+            { key: 'unavailable' },
+            react.createElement('p', { style: { margin: '0 0 8px', fontSize: 13, color: 'var(--dsw-alias-label-secondary)', lineHeight: '20px' } },
+              '工作区档案速览：host 半实时读取工作区根目录下的 FILE-MAP / memory / records / diary 统计，client 半 fetch 展示。配置暂不可用。'
+            ),
+            react.createElement('p', { style: { margin: '0 0 8px', fontSize: 12, color: 'var(--dsw-alias-label-tertiary)', lineHeight: '18px' } },
+              '可改 cordis.yml 的 config.workspaceRoot 指定工作区根目录。'
+            )
+          );
+        } else {
+          content = [
+            react.createElement('p', { key: 'desc', style: { margin: '0 0 4px', fontSize: 13, color: 'var(--dsw-alias-label-secondary)', lineHeight: '20px' } },
+              '工作区根目录（其下应包含 workspace/、diary/ 等目录），留空 = 使用 DSH host 进程当前工作目录：'),
+            react.createElement(WorkspaceRootEditor, { key: 'editor', bound: bound }),
+            react.createElement('div', { key: 'footer', style: { display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 10, alignItems: 'center' } },
+              react.createElement('button', { type: 'button', onClick: function () { setOpen(false); }, style: CARD_BTN }, '收起')
+            )
+          ];
+        }
+        body = react.createElement('div', { style: { borderTop: '1px solid var(--dsw-alias-border-l2)', padding: '10px 12px' } }, content);
+      }
+
+      return react.createElement(
+        'li',
+        { style: { listStyle: 'none' } },
+        react.createElement(
+          'div',
+          { style: { border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-3)', borderRadius: 10, overflow: 'hidden', minWidth: 0 } },
+          titleRow,
+          body
+        )
+      );
+    }
+
+    // ── 设置 → 莉娅工作区 页（数据展示 + 编辑区）
+    function LiyaSection(props) {
+      var ctx = props.ctx;
+      var bound = bindScope(ctx, props.bound);
       var state = react.useState('loading'); // loading | ok | error
       var phase = state[0];
       var setPhase = state[1];
@@ -234,7 +333,7 @@ window.__ModuleLoader__.load({
           { style: { margin: '0 0 12px', fontSize: 14, lineHeight: '22px', color: 'var(--dsw-alias-label-secondary)' } },
           '工作区档案速览：数据由插件 host 半实时读取（webServer 路由 /dsh-liya-workspace/summary），client 半 fetch 展示。'
         ),
-        react.createElement(WorkspaceRootEditor, { bound: bound, ctx: ctx }),
+        react.createElement(WorkspaceRootEditor, { bound: bound }),
         body
       );
     }
@@ -249,6 +348,19 @@ window.__ModuleLoader__.load({
         var ss = ctx.get('settingsScope');
         if (ss !== undefined) bound = ss.bind({ namespace: 'dsh-liya-workspace' });
       } catch (e) { bound = null; }
+      // 配置卡：设置 → 插件 → 插件配置（settingsScope 可用位置，dsh-liya-ui/skin 同款）
+      slots.inject('settings.plugin.item', function () {
+        return slots.register(
+          {
+            name: 'settings.plugin.item',
+            id: 'dsh-liya-workspace',
+            order: 40,
+            label: function () { return 'dsh-liya-workspace'; }
+          },
+          function (props) { return react.createElement(LiyaWorkspaceCard, { ctx: ctx, bound: bound }); }
+        );
+      });
+      // 档案页：设置 → 莉娅工作区（数据展示 + 编辑区）
       slots.inject('settings.section', function () {
         return slots.register(
           {
@@ -257,7 +369,7 @@ window.__ModuleLoader__.load({
             order: 100,
             label: function () { return '莉娅工作区'; }
           },
-          function (props) { return react.createElement(LiyaSection, { bound: bound, ctx: ctx }); }
+          function (props) { return react.createElement(LiyaSection, { ctx: ctx, bound: bound }); }
         );
       });
     };
